@@ -1,0 +1,103 @@
+# Canvas tools
+canvas_tools
+instructor-repo
+
+# Claude Code local settings
+.claude/
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+.nyc_output/
+coverage/
+*.lcov
+.hypothesis/
+.pytest_cache/
+.tox/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes (data persists in named volumes)
+data/
+mongodb-data/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# =============================================================================
+# Instructor-only files (GitHub Classroom automation)
+# =============================================================================
+# Token files for GitHub API access
+*token*.txt
+instructor_token.txt
+api_token.txt
+
+# Hidden credentials file
+.github_credentials
+
+# Assignment configuration (contains sensitive paths)
+assignment.conf
+
+# Generated batch files
+tools/generated/
+*.batch
+
+# Temporary files from automation scripts
+.temp_*
+temp_*
+
+# IDE and editor files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# GitHub Classroom student repositories (auto-generated)
+project5-instructor-tests
+student-repos/
+student-repos.txt
+

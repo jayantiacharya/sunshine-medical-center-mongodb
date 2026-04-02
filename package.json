@@ -1,0 +1,28 @@
+{
+  "name": "module06-project",
+  "version": "1.0.0",
+  "description": "MongoDB-based database system for SunshineMedicalCenter. This project demonstrates indexing strategies, schema design patterns, and advanced aggregation pipelines.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dc:up": "docker compose up -d",
+    "dc:down": "docker compose down -v",
+    "dc:logs": "docker compose logs -f --tail=100 mongodb app mongo-express",
+    "dc:sh": "docker compose exec app sh",
+    "dc:seed": "docker compose exec app npm run --prefix starter-code seed",
+    "dc:start": "docker compose exec app npm run --prefix starter-code start",
+    "dc:dev": "docker compose exec app npm run --prefix starter-code dev",
+    "dc:mongosh": "docker compose run --rm mongosh 'mongodb://admin:cs3550password@mongodb:27017/sunshine_medical_center?authSource=admin'",
+    "dc:npm": "docker compose exec app npm --prefix starter-code",
+    "dc:test": "docker compose exec app npm --prefix starter-code test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@faker-js/faker": "^10.1.0",
+    "dotenv": "^17.2.3",
+    "mongodb": "^6.20.0"
+  }
+}

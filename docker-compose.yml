@@ -1,0 +1,69 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: project6-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: cs3550password
+      MONGO_INITDB_DATABASE: sunshine_medical_center
+    volumes:
+      - sunshine_medical_center-data:/data/db
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - sunshine_medical_center-network
+
+  # Developer app container (runs Node/npm entirely inside Docker)
+  app:
+    image: node:20-alpine
+    container_name: sunshine_medical_center-app
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      # Point node app and seed scripts to the MongoDB service hostname
+      MONGODB_URI: mongodb://admin:cs3550password@mongodb:27017/
+      DB_NAME: sunshine_medical_center
+      NODE_ENV: development
+    depends_on:
+      - mongodb
+    networks:
+      - sunshine_medical_center-network
+    # Keep container running for exec commands
+    command: tail -f /dev/null
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: sunshine_medical_center-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: cs3550password
+      ME_CONFIG_MONGODB_URL: mongodb://admin:cs3550password@mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    depends_on:
+      - mongodb
+    networks:
+      - sunshine_medical_center-network
+
+  # Ephemeral mongosh CLI container (invoked with `docker compose run --rm mongosh ...`)
+  mongosh:
+    image: mongo:8.0
+    profiles: ["tools"]
+    depends_on:
+      - mongodb
+    networks:
+      - sunshine_medical_center-network
+    entrypoint: ["mongosh"]
+
+volumes:
+  sunshine_medical_center-data:
+    name: sunshine_medical_center-data
+
+networks:
+  sunshine_medical_center-network:
+    name: sunshine_medical_center-network

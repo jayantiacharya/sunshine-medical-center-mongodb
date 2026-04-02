@@ -1,0 +1,457 @@
+name: Autograding Tests
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  repository_dispatch:
+permissions:
+  checks: write
+  actions: read
+  contents: read
+jobs:
+  run-autograding-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.actor != 'github-classroom[bot]'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check instructor token (student-friendly message)
+        env:
+          INSTRUCTOR_TESTS_TOKEN: ${{ secrets.INSTRUCTOR_TESTS_TOKEN }}
+        run: ./.github/scripts/check_instructor_token.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Docker Compose services (MongoDB + app)
+        run: |
+          docker compose up -d --quiet-pull 2>/dev/null || docker compose up -d
+          echo "✅ Docker Compose services started"
+
+      - name: Wait for MongoDB
+        run: |
+          echo "⏳ Waiting for MongoDB to be ready..."
+          ATTEMPTS=0
+          until docker compose exec -T mongodb mongosh \
+            --quiet \
+            --eval "db.adminCommand('ping')" \
+            mongodb://admin:cs3550password@localhost:27017/?authSource=admin > /dev/null 2>&1; do
+            ATTEMPTS=$((ATTEMPTS+1))
+            if [ $ATTEMPTS -gt 30 ]; then
+              echo "❌ MongoDB failed to become ready"
+              exit 1
+            fi
+            echo "Attempt $ATTEMPTS/30: MongoDB not ready yet..."
+            sleep 2
+          done
+          echo "✅ MongoDB is ready!"
+
+      - name: Verify services
+        run: |
+          docker compose ps
+          docker compose exec -T mongodb mongosh \
+            --eval "db.version()" \
+            mongodb://admin:cs3550password@localhost:27017/?authSource=admin
+
+      - name: Checkout Private Instructor Tests Repo
+        uses: actions/checkout@v4
+        with:
+          repository: CS3550-master/project6-instructor-tests
+          token: ${{ secrets.INSTRUCTOR_TESTS_TOKEN }}
+          path: instructor-tests-repo
+
+      - name: Copy tests folder from private repo
+        run: |
+          echo "📦 Copying tests from instructor-tests-repo to working location..."
+          if [ -d instructor-tests-repo/tests ]; then
+            cp -R instructor-tests-repo/tests tests
+            echo "✅ Tests copied from instructor-tests-repo/tests/"
+          else
+            echo "❌ Could not find tests in instructor-tests-repo"
+            ls -la instructor-tests-repo || true
+            exit 1
+          fi
+          echo "Tests directory structure:"
+          ls -la tests/
+
+      - name: Resolve tests directory
+        id: resolve_tests_dir
+        run: |
+          if [ -f tests/package.json ]; then
+            echo "dir=/workspace/tests" >> $GITHUB_OUTPUT
+            echo "✅ Detected tests dir at /workspace/tests"
+          else
+            echo "❌ Could not locate tests/package.json after copy"
+            ls -la tests/ || true
+            exit 1
+          fi
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            tests/node_modules
+            node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install student dependencies inside container
+        run: |
+          echo "📦 Installing student npm dependencies at /workspace..."
+          docker compose exec -T app sh -c "cd /workspace && npm ci --prefer-offline || npm install"
+
+      - name: Install test dependencies inside container
+        run: |
+          echo "📦 Installing test dependencies..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm ci --prefer-offline || npm install"
+
+      - name: Seed database
+        run: ./.github/scripts/seed-database.sh
+
+      - name: Verify seed data
+        run: ./.github/scripts/verify-seed-data.sh
+
+      - name: Smoke tests
+        id: smoke
+        continue-on-error: true
+        run: |
+          echo "💨 Running smoke tests..."
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:smoke" > smoke_output.txt 2>&1
+          cat smoke_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" smoke_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" smoke_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" smoke_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      # ── Phase 1: Indexing & Query Performance ─────────────────────────
+
+      - name: Phase 1 Task 1 - Single-Field Indexes (15)
+        id: phase1_task1
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 1, Task 1 tests (Single-Field Indexes)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase1:task1" > phase1_task1_output.txt 2>&1
+          cat phase1_task1_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase1_task1_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase1_task1_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase1_task1_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 1 Task 2 - Compound & Multikey Indexes (20)
+        id: phase1_task2
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 1, Task 2 tests (Compound & Multikey Indexes)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase1:task2" > phase1_task2_output.txt 2>&1
+          cat phase1_task2_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase1_task2_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase1_task2_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase1_task2_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 1 Task 3 - Text Index Management (15)
+        id: phase1_task3
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 1, Task 3 tests (Text Index Management)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase1:task3" > phase1_task3_output.txt 2>&1
+          cat phase1_task3_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase1_task3_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase1_task3_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase1_task3_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      # ── Phase 2: Schema Design Patterns ───────────────────────────────
+
+      - name: Phase 2 Task 4 - JSON Schema Validation (20)
+        id: phase2_task4
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 2, Task 4 tests (JSON Schema Validation)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase2:task4" > phase2_task4_output.txt 2>&1
+          cat phase2_task4_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase2_task4_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase2_task4_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase2_task4_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 2 Task 5 - Polymorphic Pattern (20)
+        id: phase2_task5
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 2, Task 5 tests (Polymorphic Pattern)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase2:task5" > phase2_task5_output.txt 2>&1
+          cat phase2_task5_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase2_task5_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase2_task5_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase2_task5_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 2 Task 6 - Billing Collection (20)
+        id: phase2_task6
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 2, Task 6 tests (Billing Collection)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase2:task6" > phase2_task6_output.txt 2>&1
+          cat phase2_task6_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase2_task6_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase2_task6_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase2_task6_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      # ── Phase 3: Advanced Aggregation ─────────────────────────────────
+
+      - name: Phase 3 Task 7 - lookup and unwind (25)
+        id: phase3_task7
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 3, Task 7 tests (\$lookup & \$unwind)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase3:task7" > phase3_task7_output.txt 2>&1
+          cat phase3_task7_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase3_task7_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase3_task7_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase3_task7_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 3 Task 8 - Complex Aggregation Pipelines (25)
+        id: phase3_task8
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 3, Task 8 tests (Complex Aggregation Pipelines)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase3:task8" > phase3_task8_output.txt 2>&1
+          cat phase3_task8_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase3_task8_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase3_task8_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase3_task8_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Phase 3 Task 9 - Analytics Reports (25)
+        id: phase3_task9
+        continue-on-error: true
+        run: |
+          echo "📝 Running Phase 3, Task 9 tests (Analytics Reports)..."
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run cleanup"
+          set +e
+          docker compose exec -T app sh -c "cd '${{ steps.resolve_tests_dir.outputs.dir }}' && npm run test:phase3:task9" > phase3_task9_output.txt 2>&1
+          cat phase3_task9_output.txt
+          grep -qE "(# fail 0|ℹ fail 0)" phase3_task9_output.txt && \
+          grep -qE "(# cancelled 0|ℹ cancelled 0)" phase3_task9_output.txt && \
+          grep -qE "(# skipped 0|ℹ skipped 0)" phase3_task9_output.txt
+          RESULT=$?
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+          exit 0
+
+      # ── Grading ───────────────────────────────────────────────────────
+
+      - name: Calculate grade
+        id: calculate_grade
+        if: always()
+        run: |
+          echo "📊 Calculating grade..."
+          echo ""
+          echo "=== Task Results ==="
+
+          # Phase 1 (50 pts): Task 1: 15, Task 2: 20, Task 3: 15
+          # Phase 2 (60 pts): Task 4: 20, Task 5: 20, Task 6: 20
+          # Phase 3 (75 pts): Task 7: 25, Task 8: 25, Task 9: 25
+          # Total: 185 points
+
+          task1_points=0; task2_points=0; task3_points=0
+          task4_points=0; task5_points=0; task6_points=0
+          task7_points=0; task8_points=0; task9_points=0
+
+          if [ "${{ steps.phase1_task1.outputs.result }}" == "0" ]; then
+            task1_points=15; echo "✅ Task 1 (Single-Field Indexes): 15/15"
+          else
+            echo "❌ Task 1 (Single-Field Indexes): 0/15"
+          fi
+
+          if [ "${{ steps.phase1_task2.outputs.result }}" == "0" ]; then
+            task2_points=20; echo "✅ Task 2 (Compound & Multikey): 20/20"
+          else
+            echo "❌ Task 2 (Compound & Multikey): 0/20"
+          fi
+
+          if [ "${{ steps.phase1_task3.outputs.result }}" == "0" ]; then
+            task3_points=15; echo "✅ Task 3 (Text Index Management): 15/15"
+          else
+            echo "❌ Task 3 (Text Index Management): 0/15"
+          fi
+
+          if [ "${{ steps.phase2_task4.outputs.result }}" == "0" ]; then
+            task4_points=20; echo "✅ Task 4 (JSON Schema Validation): 20/20"
+          else
+            echo "❌ Task 4 (JSON Schema Validation): 0/20"
+          fi
+
+          if [ "${{ steps.phase2_task5.outputs.result }}" == "0" ]; then
+            task5_points=20; echo "✅ Task 5 (Polymorphic Pattern): 20/20"
+          else
+            echo "❌ Task 5 (Polymorphic Pattern): 0/20"
+          fi
+
+          if [ "${{ steps.phase2_task6.outputs.result }}" == "0" ]; then
+            task6_points=20; echo "✅ Task 6 (Billing Collection): 20/20"
+          else
+            echo "❌ Task 6 (Billing Collection): 0/20"
+          fi
+
+          if [ "${{ steps.phase3_task7.outputs.result }}" == "0" ]; then
+            task7_points=25; echo "✅ Task 7 (lookup & unwind): 25/25"
+          else
+            echo "❌ Task 7 (lookup & unwind): 0/25"
+          fi
+
+          if [ "${{ steps.phase3_task8.outputs.result }}" == "0" ]; then
+            task8_points=25; echo "✅ Task 8 (Complex Pipelines): 25/25"
+          else
+            echo "❌ Task 8 (Complex Pipelines): 0/25"
+          fi
+
+          if [ "${{ steps.phase3_task9.outputs.result }}" == "0" ]; then
+            task9_points=25; echo "✅ Task 9 (Analytics Reports): 25/25"
+          else
+            echo "❌ Task 9 (Analytics Reports): 0/25"
+          fi
+
+          phase1_score=$((task1_points + task2_points + task3_points))
+          phase2_score=$((task4_points + task5_points + task6_points))
+          phase3_score=$((task7_points + task8_points + task9_points))
+          total_score=$((phase1_score + phase2_score + phase3_score))
+
+          passed=0
+          [ $task1_points -gt 0 ] && passed=$((passed + 1))
+          [ $task2_points -gt 0 ] && passed=$((passed + 1))
+          [ $task3_points -gt 0 ] && passed=$((passed + 1))
+          [ $task4_points -gt 0 ] && passed=$((passed + 1))
+          [ $task5_points -gt 0 ] && passed=$((passed + 1))
+          [ $task6_points -gt 0 ] && passed=$((passed + 1))
+          [ $task7_points -gt 0 ] && passed=$((passed + 1))
+          [ $task8_points -gt 0 ] && passed=$((passed + 1))
+          [ $task9_points -gt 0 ] && passed=$((passed + 1))
+          total=9
+
+          echo ""
+          echo "=== FINAL GRADING SUMMARY ==="
+          echo "PHASE 1 — Indexing & Query Performance (50 pts):"
+          echo "  Task 1 (Single-Field Indexes):  $task1_points/15"
+          echo "  Task 2 (Compound & Multikey):   $task2_points/20"
+          echo "  Task 3 (Text Index Management): $task3_points/15"
+          echo "  Subtotal: $phase1_score/50"
+          echo ""
+          echo "PHASE 2 — Schema Design Patterns (60 pts):"
+          echo "  Task 4 (JSON Schema Validation): $task4_points/20"
+          echo "  Task 5 (Polymorphic Pattern):    $task5_points/20"
+          echo "  Task 6 (Billing Collection):     $task6_points/20"
+          echo "  Subtotal: $phase2_score/60"
+          echo ""
+          echo "PHASE 3 — Advanced Aggregation (75 pts):"
+          echo "  Task 7 (lookup & unwind):    $task7_points/25"
+          echo "  Task 8 (Complex Pipelines):  $task8_points/25"
+          echo "  Task 9 (Analytics Reports):  $task9_points/25"
+          echo "  Subtotal: $phase3_score/75"
+          echo ""
+          echo "------------------------"
+          echo "Tasks Passed: $passed/$total"
+          echo "Total Score:  $total_score/185 points"
+
+          echo "score=$total_score"             >> $GITHUB_OUTPUT
+          echo "passed=$passed"                 >> $GITHUB_OUTPUT
+          echo "total=$total"                   >> $GITHUB_OUTPUT
+          echo "task1_points=$task1_points"     >> $GITHUB_OUTPUT
+          echo "task2_points=$task2_points"     >> $GITHUB_OUTPUT
+          echo "task3_points=$task3_points"     >> $GITHUB_OUTPUT
+          echo "task4_points=$task4_points"     >> $GITHUB_OUTPUT
+          echo "task5_points=$task5_points"     >> $GITHUB_OUTPUT
+          echo "task6_points=$task6_points"     >> $GITHUB_OUTPUT
+          echo "task7_points=$task7_points"     >> $GITHUB_OUTPUT
+          echo "task8_points=$task8_points"     >> $GITHUB_OUTPUT
+          echo "task9_points=$task9_points"     >> $GITHUB_OUTPUT
+          echo "phase1_score=$phase1_score"     >> $GITHUB_OUTPUT
+          echo "phase2_score=$phase2_score"     >> $GITHUB_OUTPUT
+          echo "phase3_score=$phase3_score"     >> $GITHUB_OUTPUT
+
+      - name: Create grade summary
+        if: always()
+        run: |
+          echo "## 📊 Autograding Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Score: ${{ steps.calculate_grade.outputs.score }}/185**" >> $GITHUB_STEP_SUMMARY
+          echo "**Tasks Passed: ${{ steps.calculate_grade.outputs.passed }}/${{ steps.calculate_grade.outputs.total }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Phase 1 — Indexing & Query Performance (50 pts)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Task | Points | Status | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|--------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 1 | ${{ steps.calculate_grade.outputs.task1_points }}/15 | ${{ steps.phase1_task1.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Single-Field Indexes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 2 | ${{ steps.calculate_grade.outputs.task2_points }}/20 | ${{ steps.phase1_task2.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Compound & Multikey Indexes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 3 | ${{ steps.calculate_grade.outputs.task3_points }}/15 | ${{ steps.phase1_task3.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Text Index Management |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Subtotal** | **${{ steps.calculate_grade.outputs.phase1_score }}/50** | | |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Phase 2 — Schema Design Patterns (60 pts)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Task | Points | Status | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|--------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 4 | ${{ steps.calculate_grade.outputs.task4_points }}/20 | ${{ steps.phase2_task4.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | JSON Schema Validation |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 5 | ${{ steps.calculate_grade.outputs.task5_points }}/20 | ${{ steps.phase2_task5.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Polymorphic Pattern |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 6 | ${{ steps.calculate_grade.outputs.task6_points }}/20 | ${{ steps.phase2_task6.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Billing Collection |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Subtotal** | **${{ steps.calculate_grade.outputs.phase2_score }}/60** | | |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Phase 3 — Advanced Aggregation (75 pts)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Task | Points | Status | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|--------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 7 | ${{ steps.calculate_grade.outputs.task7_points }}/25 | ${{ steps.phase3_task7.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | \$lookup & \$unwind |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 8 | ${{ steps.calculate_grade.outputs.task8_points }}/25 | ${{ steps.phase3_task8.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Complex Aggregation Pipelines |" >> $GITHUB_STEP_SUMMARY
+          echo "| Task 9 | ${{ steps.calculate_grade.outputs.task9_points }}/25 | ${{ steps.phase3_task9.outputs.result == '0' && '✅ Pass' || '❌ Fail' }} | Analytics Reports |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Subtotal** | **${{ steps.calculate_grade.outputs.phase3_score }}/75** | | |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ steps.smoke.outcome == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup services
+        if: always()
+        run: |
+          docker compose down -v
