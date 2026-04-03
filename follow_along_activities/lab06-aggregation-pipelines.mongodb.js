@@ -191,23 +191,19 @@ db.products.aggregate([
 // Pipeline 1: Seller Performance Report
 // For each seller: total orders, delivered, cancelled, pending, completion_rate, avg_order_value
 // Only sellers with 2+ orders — sort by completion_rate desc
-// TODO:
+// TODO: Build this 5-stage pipeline:
+//   1. $group  — group by seller_id; count total_orders; tally delivered/cancelled/pending
+//                using $cond with $eq; compute avg_order_value using $avg
+//   2. $addFields — compute completion_rate = delivered / total_orders (round to 2 decimals)
+//   3. $match  — only sellers with total_orders >= 2
+//   4. $sort   — by completion_rate descending
+//   5. $project — rename _id to seller_id, round avg_order_value, exclude raw _id
 db.orders.aggregate([
-  {
-    $group: {
-      _id: "$seller_id",
-      seller_name: { $first: "$seller_name" },
-      total_orders: { $sum: 1 },
-      delivered: { $sum: { $cond: [{ $eq: ["$status", "Delivered"] }, 1, 0] } },
-      cancelled: { $sum: { $cond: [{ $eq: ["$status", "Cancelled"] }, 1, 0] } },
-      pending:   { $sum: { $cond: [{ $eq: ["$status", "Pending"] }, 1, 0] } },
-      avg_order_value: { $avg: "$total" }
-    }
-  },
-  // TODO: add $addFields stage to compute completion_rate = delivered / total_orders
-  // TODO: add $match stage to filter sellers with 2+ orders
-  // TODO: add $sort stage by completion_rate descending
-  // TODO: add $project to rename _id to seller_id and round avg_order_value
+  // TODO: $group stage
+  // TODO: $addFields stage
+  // TODO: $match stage
+  // TODO: $sort stage
+  // TODO: $project stage
 ]);
 
 // Pipeline 2: Product Revenue Summary
@@ -342,68 +338,38 @@ db.orders.aggregate([
 // Report 2: Seller Workload Analysis
 // For each seller: pending count, shipped count, total orders, availability label
 // Sort by pending descending
-// TODO:
+// TODO: Build this pipeline:
+//   1. $group  — by seller_id; count pending and shipped orders using $cond; count total
+//   2. $addFields — add availability label using $switch:
+//                   pending > 5 → "Overloaded", pending >= 2 → "Moderate", else → "Available"
+//   3. $sort   — by pending descending
+//   4. $project — rename _id to seller_id; include seller_name, pending, shipped, total, availability
 db.orders.aggregate([
-  {
-    $group: {
-      _id: "$seller_id",
-      seller_name: { $first: "$seller_name" },
-      pending:  { $sum: { $cond: [{ $eq: ["$status", "Pending"] },  1, 0] } },
-      shipped:  { $sum: { $cond: [{ $eq: ["$status", "Shipped"] },  1, 0] } },
-      total:    { $sum: 1 }
-    }
-  },
-  {
-    $addFields: {
-      availability: {
-        $switch: {
-          branches: [
-            { case: { $gt: ["$pending", 5] }, then: "Overloaded" },
-            { case: { $gte: ["$pending", 2] }, then: "Moderate" }
-          ],
-          default: "Available"
-        }
-      }
-    }
-  },
-  { $sort: { pending: -1 } }
+  // TODO: $group stage
+  // TODO: $addFields stage for availability label
+  // TODO: $sort stage
+  // TODO: $project stage
 ]);
 
 // Report 3: Buyer Activity Report
 // For each buyer with at least 1 Delivered order:
 // total_orders, total_spent, unique_sellers, buyer_tier (VIP/Regular/New)
 // Sort by total_spent desc
-// TODO:
+// TODO: Build this pipeline:
+//   1. $group  — by buyer_id; sum total_orders and total_spent; collect unique seller IDs
+//                with $addToSet; count delivered orders using $cond
+//   2. $match  — only buyers where delivered_count >= 1
+//   3. $addFields — compute unique_seller_count ($size of the set); assign buyer_tier via $switch:
+//                   total_spent > 200 → "VIP", >= 50 → "Regular", else → "New"
+//   4. $project — show buyer_id, buyer_name, total_orders, total_spent,
+//                 unique_seller_count, buyer_tier (exclude unique_sellers array and _id)
+//   5. $sort   — by total_spent descending
 db.orders.aggregate([
-  // Hint: first filter to buyers who have at least one Delivered order.
-  // One approach: $group all orders, then $match where delivered > 0.
-  {
-    $group: {
-      _id: "$buyer_id",
-      buyer_name: { $first: "$buyer_name" },
-      total_orders: { $sum: 1 },
-      total_spent: { $sum: "$total" },
-      unique_sellers: { $addToSet: "$seller_id" },
-      delivered_count: { $sum: { $cond: [{ $eq: ["$status", "Delivered"] }, 1, 0] } }
-    }
-  },
-  { $match: { delivered_count: { $gte: 1 } } },
-  {
-    $addFields: {
-      unique_seller_count: { $size: "$unique_sellers" },
-      buyer_tier: {
-        $switch: {
-          branches: [
-            { case: { $gt: ["$total_spent", 200] }, then: "VIP" },
-            { case: { $gte: ["$total_spent", 50] }, then: "Regular" }
-          ],
-          default: "New"
-        }
-      }
-    }
-  },
-  // TODO: $project to clean up output (remove unique_sellers array, keep count)
-  { $sort: { total_spent: -1 } }
+  // TODO: $group stage
+  // TODO: $match stage
+  // TODO: $addFields stage
+  // TODO: $project stage
+  // TODO: $sort stage
 ]);
 
 /*
