@@ -431,16 +431,28 @@ db.sellers.getIndexes();
 
 /*
 RECORD INDEX INVENTORY TABLE:
-Collection | Index Name             | Key Pattern        | Options
------------|------------------------|--------------------|--------
-products   | _id_                   | { _id: 1 }         |
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-orders     | _id_                   | { _id: 1 }         |
-orders     | _______________________ | __________________ | _______
+
+/*
+RECORD INDEX INVENTORY TABLE:
+Collection | Index Name                      | Key Pattern                          | Options
+-----------|--------------------------------|--------------------------------------|--------
+products   | _id_                            | { _id: 1 }                           | 
+products   | idx_products_category           | { category: 1 }                      | 
+products   | idx_products_status             | { status: 1 }                        | 
+products   | tags_1                          | { tags: 1 }                          | multikey
+products   | idx_products_text               | text on title & description          | weights: 1,1
+orders     | _id_                            | { _id: 1 }                           | 
+orders     | idx_order_total                 | { total: 1 }                         | 
+orders     | seller_id_1_status_1_order_date_-1 | { seller_id:1, status:1, order_date:-1 } | 
+sellers    | _id_                            | { _id: 1 }                           | 
+sellers    | idx_sellers_seller_id_unique    | { seller_id: 1 }                     | unique
+sellers    | idx_sellers_email_unique        | { email: 1 }                         | unique
+sellers    | idx_sellers_status              | { status: 1 }                        | 
+sellers    | idx_sellers_rating_desc         | { rating: -1 }                       | 
+sellers    | idx_sellers_join_date_status    | { join_date: -1, status: 1 }         | 
 */
+
+
 
 // ------------------------------------------------------------
 // Task 5.2 — Drop and Rebuild (5 points)
@@ -448,14 +460,15 @@ orders     | _______________________ | __________________ | _______
 
 // Drop the category index
 // TODO: Drop "idx_products_category"
-db.products.dropIndex("");
+db.products.dropIndex("idx_products_category");
 
 // Verify it's gone
 db.products.getIndexes();
 
 // Recreate it
 // TODO: Recreate the category index with the same name
-db.products.createIndex({}, {});
+db.products.createIndex({ category: 1 }, 
+  { name: "idx_products_category" });
 
 // Verify it's back
 db.products.getIndexes();
@@ -471,8 +484,11 @@ db.orders.aggregate([{ $indexStats: {} }]);
 /*
 RECORD STATS:
   Which indexes have accesses.ops > 0?
-  _______________________________________
+   products: idx_products_category, idx_products_status, tags_1
+  orders: idx_order_total, seller_id_1_status_1_order_date_-1
+
 
   What does accesses.ops represent?
-  _______________________________________
+    accesses.ops represents the number of times each index has been used to execute a query operation (find, update, delete, or aggregation) since the MongoDB instance started or the index was created. It helps identify which indexes are actively being used and which are unnecessary.
+
 */
