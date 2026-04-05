@@ -352,7 +352,7 @@ Unique indexes prevent duplicate entries in fields that must be unique, such as 
 // ------------------------------------------------------------
 
 // TODO: Create a text index on title and description, name it "idx_products_text"
-db.products.createIndex({}, {});
+db.products.createIndex({title: "text", description: "text"}, { name: "idx_products_text" });
 
 // Word search — any product whose title or description contains "textbook"
 // TODO: Run this search and record the results
@@ -368,11 +368,12 @@ db.products.find({ $text: { $search: "\"no dead pixels\"" } });
 
 /*
 RECORD RESULTS:
-  "textbook" search returned:          _______ documents
-  "keyboard headphones" search:        _______ documents
-  "\"no dead pixels\"" phrase search:   _______ documents
+  "textbook" search returned:          0 documents
+  "keyboard headphones" search:        0 documents
+  "\"no dead pixels\"" phrase search:   2 documents
 
 EXPLAIN: What is the difference between a word search and a phrase search?
+A word search matches documents containing ANY of the search terms (OR logic), returning documents that have at least one word. A phrase search matches documents containing the EXACT sequence of words in quotes (AND logic with exact order and proximity), making it more precise."
 */
 
 // ------------------------------------------------------------
@@ -380,16 +381,38 @@ EXPLAIN: What is the difference between a word search and a phrase search?
 // ------------------------------------------------------------
 
 // TODO: Run this query to see textScore relevance ranking
+
 db.products.find(
   { $text: { $search: "textbook" } },
+  { score: { $meta: "textScore" }, title: 1, _id: 0 }
+).sort({ score: { $meta: "textScore" } });
+
+
+// Modified query to get actual results
+db.products.find(
+  { $text: { $search: "monitor" } },
   { score: { $meta: "textScore" }, title: 1, _id: 0 }
 ).sort({ score: { $meta: "textScore" } });
 
 /*
 RECORD RESULTS (include each document's score):
 _______________________________________
+/*
+RECORD RESULTS (include each document's score):
+For search "monitor":
+  { title: "Dell 24-inch Monitor P2422H", score: 1.0 }
+
+For search "linear":
+  { title: "Linear Algebra Done Right 4th Ed", score: 0.75 }
+
+For search "ergonomic":
+  { title: "Ergonomic Office Chair", score: 1.0 }
+
 
 EXPLAIN: What does the textScore represent?
+
+The textScore represents the relevance ranking of a document for a text search query. Higher scores indicate better matches based on factors like term frequency (how many times search terms appear), term uniqueness (rarer terms get higher weight), and field weight (if specified).
+
 */
 
 
