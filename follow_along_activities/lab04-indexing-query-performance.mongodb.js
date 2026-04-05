@@ -247,7 +247,7 @@ Because the tags field is an array that can contain multiple values (e.g., ["MAT
 // ------------------------------------------------------------
 
 // This is the query NestMart runs to show a seller their pending orders:
-// db.orders.find({ seller_id: "S001", status: "Pending" }).sort({ order_date: -1 })
+db.orders.find({ seller_id: "S001", status: "Pending" }).sort({ order_date: -1 })
 
 // Step 1: Run without compound index and record metrics
 // TODO: Run explain("executionStats") on the query above
@@ -258,25 +258,25 @@ db.orders.find({
 
 /*
 BASELINE (before compound index):
-  stage:               _______
-  totalDocsExamined:   _______
-  nReturned:           _______
-  executionTimeMillis: _______
+  stage:               SORT + COLLSCAN
+  totalDocsExamined:   6
+  nReturned:           2
+  executionTimeMillis: 0
 */
 
 // Step 2: Apply the ESR Rule
 /*
 WRITE YOUR ESR ANALYSIS:
-  Equality fields:  _______  (filters that use = or $in)
-  Sort field:       _______  (the field in .sort())
-  Range field(s):   _______  (filters that use $gt, $lt, $gte, $lte, etc.)
+  Equality fields:  seller_id, Status  (filters that use = or $in)
+  Sort field:       order_date  (the field in .sort())
+  Range field(s):   none (filters that use $gt, $lt, $gte, $lte, etc.)
 
-  Optimal index order: { ___ : 1, ___ : 1, ___ : -1 }
+  Optimal index order: { seller_id: 1, status : 1, order_date : -1 }
 */
 
 // Step 3: Create the compound index
 // TODO: Create the compound index based on your ESR analysis
-db.orders.createIndex({});
+db.orders.createIndex({seller_id: 1, status: 1, order_date: -1 });
 
 // Step 4: Re-run with explain and record new metrics
 // TODO: Run explain("executionStats") again
@@ -287,10 +287,10 @@ db.orders.find({
 
 /*
 AFTER COMPOUND INDEX:
-  stage:               _______  (should be IXSCAN)
-  totalDocsExamined:   _______
-  nReturned:           _______
-  executionTimeMillis: _______
+  stage:               IXSCAN (should be IXSCAN)
+  totalDocsExamined:   2
+  nReturned:           2
+  executionTimeMillis: 1
 */
 
 // ------------------------------------------------------------
@@ -311,14 +311,15 @@ PREFIX RULE RESULTS:
   find({ seller_id, status })      → _______  (IXSCAN uses full prefix)
 
 IN YOUR OWN WORDS: Explain the prefix rule.
-*/
 
+The prefix rule states that MongoDB can use a compound index for queries that include the first field, first two fields, or all fields in order. If a query omits the first field (the leftmost prefix), MongoDB cannot use that compound index efficiently and falls back to a COLLSCAN. This is why find({status}) did a COLLSCAN while find({seller_id}) and find({seller_id, status}) both used IXSCAN.
+*/
 // ------------------------------------------------------------
 // Task 3.3 — Unique Index (5 points)
 // ------------------------------------------------------------
 
 // TODO: Create a unique index on product_id
-db.products.createIndex({}, {});
+db.products.createIndex({product_id: 1}, {unique: true, name:"idx_products_product_id_unique"});
 
 // Test the constraint — this should fail with a duplicate key error
 // TODO: Try inserting a product with product_id "P001" (already exists)
@@ -334,8 +335,11 @@ db.products.insertOne({
 /*
 RECORD THE ERROR MESSAGE:
 _______________________________________
+Index build failed: f30438aa-931c-4e9b-bbb0-041da6a2e405: Collection test.products ( 5d566e31-577f-42bd-96a9-95334c792601 ) :: caused by :: E11000 duplicate key error collection: test.products index: idx_products_product_id_unique dup key: { product_id: "P001" }
 
 ANSWER: Why are unique indexes important for a marketplace database?
+
+Unique indexes prevent duplicate entries in fields that must be unique, such as product_id, order_id, and email addresses. They maintain data integrity, prevent accidental duplicate inserts, and ensure each entity can be uniquely identified, which is critical for a marketplace where every product and order must be distinct.
 */
 
 
