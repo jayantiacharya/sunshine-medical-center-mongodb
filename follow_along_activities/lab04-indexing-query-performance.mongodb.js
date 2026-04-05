@@ -159,9 +159,9 @@ db.products.find({ tags: "CS101" }).explain("executionStats");
 RECORD BASELINE TABLE:
 Query  | stage    | docsExamined | nReturned | timeMillis
 -------|----------|--------------|-----------|----------
-A      | ________ | ________     | ________  | ________
-B      | ________ | ________     | ________  | ________
-C      | ________ | ________     | ________  | ________
+A      | COLLSCAN |     6        | ____6____  | _____0___
+B      | COLLSCAN |  ___6____     | ___2____  | _____0___
+C      | COLLSCAN | ____6____     | ____0____  | ____0____
 */
 
 
@@ -174,7 +174,7 @@ C      | ________ | ________     | ________  | ________
 // ------------------------------------------------------------
 
 // TODO: Create a single-field index on category, name it "idx_products_category"
-db.products.createIndex({}, {});
+db.products.createIndex({category: 1}, {name: "idx_products_category"});
 
 // Verify the index was created
 db.products.getIndexes();
@@ -185,26 +185,35 @@ db.products.find({ category: "Textbooks" }).explain("executionStats");
 
 /*
 RECORD AFTER INDEX:
-  stage:                  _______  (should be IXSCAN)
-  totalDocsExamined:      _______
-  nReturned:              _______
-  executionTimeMillis:    _______
+  stage:                  IXSCAN  (should be IXSCAN)
+  totalDocsExamined:      2
+  nReturned:              2
+  executionTimeMillis:    2
 
 ANSWER: Is nReturned the same as totalKeysExamined? What does that tell you?
 */
+// The index was highly selective and efficient
+
+// Every key examined in the index matched the query criteria
+
+// There was no wasted index scans (no keys examined that didn't lead to matching documents)
+
+// The database only needed to fetch exactly the documents that matched (2 index keys → 2 documents fetched)
+
+
 
 // ------------------------------------------------------------
 // Task 2.2 — Indexes on status, total, and tags (10 points)
 // ------------------------------------------------------------
 
 // TODO: Create an index on products.status
-db.products.createIndex({});
+db.products.createIndex({status: 1}, {name: "idx_products_status"});
 
 // TODO: Create an index on orders.total
-db.orders.createIndex({});
+db.orders.createIndex({total: 1}, {name: "idx_order_total"});
 
 // TODO: Create an index on products.tags (this will be a multikey index)
-db.products.createIndex({});
+db.products.createIndex({tags: 1}, {name: "tags_1"});
 
 // Re-run all three baseline queries and compare
 // TODO: Re-run Query A with explain and record new metrics
@@ -220,13 +229,14 @@ db.products.find({ tags: "CS101" }).explain("executionStats");
 RECORD BEFORE/AFTER TABLE:
 Query  | before stage | after stage | before docs | after docs
 -------|--------------|-------------|-------------|----------
-A      | ________     | ________    | ________    | ________
-B      | ________     | ________    | ________    | ________
-C      | ________     | ________    | ________    | ________
+A      | COLLSCAN     | IXSCAN      | 6           | 6
+B      | COLLSCAN     | IXSCAN      | 6           | 2
+C      | COLLSCAN     | IXSCAN      | 6           | 0
 
 ANSWER: What type of index was created for the tags field, and why?
-*/
 
+Because the tags field is an array that can contain multiple values (e.g., ["MATH3200", "linear-algebra", "spring-2025"]). When we create an index on an array field, MongoDB automatically creates a multikey index, which creates separate index entries for each element in the array. This allows for efficient searching of individual tag values.
+*/
 
 // ============================================================
 // PART 3: COMPOUND INDEXES AND THE ESR RULE (30 points)
