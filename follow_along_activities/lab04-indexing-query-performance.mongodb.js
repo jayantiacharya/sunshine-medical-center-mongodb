@@ -127,14 +127,16 @@ db.orders.getIndexes();
 // Run explain("executionStats") and record:
 // stage, totalDocsExamined, nReturned, executionTimeMillis
 // TODO: Run this query and record the four metrics
+
+
 db.products.find({ category: "Textbooks" }).explain("executionStats");
 
 /*
 RECORD YOUR RESULTS HERE:
-  stage:                  _______  (COLLSCAN or IXSCAN?)
-  totalDocsExamined:      _______
-  nReturned:              _______
-  executionTimeMillis:    _______
+  stage:                  COLLSCAN
+  totalDocsExamined:      6
+  nReturned:              2
+  executionTimeMillis:    0
 */
 
 // ------------------------------------------------------------
