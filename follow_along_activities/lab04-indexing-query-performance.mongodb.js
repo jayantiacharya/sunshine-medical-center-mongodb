@@ -127,14 +127,16 @@ db.orders.getIndexes();
 // Run explain("executionStats") and record:
 // stage, totalDocsExamined, nReturned, executionTimeMillis
 // TODO: Run this query and record the four metrics
+
+
 db.products.find({ category: "Textbooks" }).explain("executionStats");
 
 /*
 RECORD YOUR RESULTS HERE:
-  stage:                  _______  (COLLSCAN or IXSCAN?)
-  totalDocsExamined:      _______
-  nReturned:              _______
-  executionTimeMillis:    _______
+  stage:                  COLLSCAN
+  totalDocsExamined:      6
+  nReturned:              2
+  executionTimeMillis:    0
 */
 
 // ------------------------------------------------------------
@@ -157,9 +159,9 @@ db.products.find({ tags: "CS101" }).explain("executionStats");
 RECORD BASELINE TABLE:
 Query  | stage    | docsExamined | nReturned | timeMillis
 -------|----------|--------------|-----------|----------
-A      | ________ | ________     | ________  | ________
-B      | ________ | ________     | ________  | ________
-C      | ________ | ________     | ________  | ________
+A      | COLLSCAN |     6        | ____6____  | _____0___
+B      | COLLSCAN |  ___6____     | ___2____  | _____0___
+C      | COLLSCAN | ____6____     | ____0____  | ____0____
 */
 
 
@@ -172,7 +174,7 @@ C      | ________ | ________     | ________  | ________
 // ------------------------------------------------------------
 
 // TODO: Create a single-field index on category, name it "idx_products_category"
-db.products.createIndex({}, {});
+db.products.createIndex({category: 1}, {name: "idx_products_category"});
 
 // Verify the index was created
 db.products.getIndexes();
@@ -183,26 +185,35 @@ db.products.find({ category: "Textbooks" }).explain("executionStats");
 
 /*
 RECORD AFTER INDEX:
-  stage:                  _______  (should be IXSCAN)
-  totalDocsExamined:      _______
-  nReturned:              _______
-  executionTimeMillis:    _______
+  stage:                  IXSCAN  (should be IXSCAN)
+  totalDocsExamined:      2
+  nReturned:              2
+  executionTimeMillis:    2
 
 ANSWER: Is nReturned the same as totalKeysExamined? What does that tell you?
 */
+// The index was highly selective and efficient
+
+// Every key examined in the index matched the query criteria
+
+// There was no wasted index scans (no keys examined that didn't lead to matching documents)
+
+// The database only needed to fetch exactly the documents that matched (2 index keys → 2 documents fetched)
+
+
 
 // ------------------------------------------------------------
 // Task 2.2 — Indexes on status, total, and tags (10 points)
 // ------------------------------------------------------------
 
 // TODO: Create an index on products.status
-db.products.createIndex({});
+db.products.createIndex({status: 1}, {name: "idx_products_status"});
 
 // TODO: Create an index on orders.total
-db.orders.createIndex({});
+db.orders.createIndex({total: 1}, {name: "idx_order_total"});
 
 // TODO: Create an index on products.tags (this will be a multikey index)
-db.products.createIndex({});
+db.products.createIndex({tags: 1}, {name: "tags_1"});
 
 // Re-run all three baseline queries and compare
 // TODO: Re-run Query A with explain and record new metrics
@@ -218,13 +229,14 @@ db.products.find({ tags: "CS101" }).explain("executionStats");
 RECORD BEFORE/AFTER TABLE:
 Query  | before stage | after stage | before docs | after docs
 -------|--------------|-------------|-------------|----------
-A      | ________     | ________    | ________    | ________
-B      | ________     | ________    | ________    | ________
-C      | ________     | ________    | ________    | ________
+A      | COLLSCAN     | IXSCAN      | 6           | 6
+B      | COLLSCAN     | IXSCAN      | 6           | 2
+C      | COLLSCAN     | IXSCAN      | 6           | 0
 
 ANSWER: What type of index was created for the tags field, and why?
-*/
 
+Because the tags field is an array that can contain multiple values (e.g., ["MATH3200", "linear-algebra", "spring-2025"]). When we create an index on an array field, MongoDB automatically creates a multikey index, which creates separate index entries for each element in the array. This allows for efficient searching of individual tag values.
+*/
 
 // ============================================================
 // PART 3: COMPOUND INDEXES AND THE ESR RULE (30 points)
@@ -235,7 +247,7 @@ ANSWER: What type of index was created for the tags field, and why?
 // ------------------------------------------------------------
 
 // This is the query NestMart runs to show a seller their pending orders:
-// db.orders.find({ seller_id: "S001", status: "Pending" }).sort({ order_date: -1 })
+db.orders.find({ seller_id: "S001", status: "Pending" }).sort({ order_date: -1 })
 
 // Step 1: Run without compound index and record metrics
 // TODO: Run explain("executionStats") on the query above
@@ -246,25 +258,25 @@ db.orders.find({
 
 /*
 BASELINE (before compound index):
-  stage:               _______
-  totalDocsExamined:   _______
-  nReturned:           _______
-  executionTimeMillis: _______
+  stage:               SORT + COLLSCAN
+  totalDocsExamined:   6
+  nReturned:           2
+  executionTimeMillis: 0
 */
 
 // Step 2: Apply the ESR Rule
 /*
 WRITE YOUR ESR ANALYSIS:
-  Equality fields:  _______  (filters that use = or $in)
-  Sort field:       _______  (the field in .sort())
-  Range field(s):   _______  (filters that use $gt, $lt, $gte, $lte, etc.)
+  Equality fields:  seller_id, Status  (filters that use = or $in)
+  Sort field:       order_date  (the field in .sort())
+  Range field(s):   none (filters that use $gt, $lt, $gte, $lte, etc.)
 
-  Optimal index order: { ___ : 1, ___ : 1, ___ : -1 }
+  Optimal index order: { seller_id: 1, status : 1, order_date : -1 }
 */
 
 // Step 3: Create the compound index
 // TODO: Create the compound index based on your ESR analysis
-db.orders.createIndex({});
+db.orders.createIndex({seller_id: 1, status: 1, order_date: -1 });
 
 // Step 4: Re-run with explain and record new metrics
 // TODO: Run explain("executionStats") again
@@ -275,10 +287,10 @@ db.orders.find({
 
 /*
 AFTER COMPOUND INDEX:
-  stage:               _______  (should be IXSCAN)
-  totalDocsExamined:   _______
-  nReturned:           _______
-  executionTimeMillis: _______
+  stage:               IXSCAN (should be IXSCAN)
+  totalDocsExamined:   2
+  nReturned:           2
+  executionTimeMillis: 1
 */
 
 // ------------------------------------------------------------
@@ -299,14 +311,15 @@ PREFIX RULE RESULTS:
   find({ seller_id, status })      → _______  (IXSCAN uses full prefix)
 
 IN YOUR OWN WORDS: Explain the prefix rule.
-*/
 
+The prefix rule states that MongoDB can use a compound index for queries that include the first field, first two fields, or all fields in order. If a query omits the first field (the leftmost prefix), MongoDB cannot use that compound index efficiently and falls back to a COLLSCAN. This is why find({status}) did a COLLSCAN while find({seller_id}) and find({seller_id, status}) both used IXSCAN.
+*/
 // ------------------------------------------------------------
 // Task 3.3 — Unique Index (5 points)
 // ------------------------------------------------------------
 
 // TODO: Create a unique index on product_id
-db.products.createIndex({}, {});
+db.products.createIndex({product_id: 1}, {unique: true, name:"idx_products_product_id_unique"});
 
 // Test the constraint — this should fail with a duplicate key error
 // TODO: Try inserting a product with product_id "P001" (already exists)
@@ -322,8 +335,11 @@ db.products.insertOne({
 /*
 RECORD THE ERROR MESSAGE:
 _______________________________________
+Index build failed: f30438aa-931c-4e9b-bbb0-041da6a2e405: Collection test.products ( 5d566e31-577f-42bd-96a9-95334c792601 ) :: caused by :: E11000 duplicate key error collection: test.products index: idx_products_product_id_unique dup key: { product_id: "P001" }
 
 ANSWER: Why are unique indexes important for a marketplace database?
+
+Unique indexes prevent duplicate entries in fields that must be unique, such as product_id, order_id, and email addresses. They maintain data integrity, prevent accidental duplicate inserts, and ensure each entity can be uniquely identified, which is critical for a marketplace where every product and order must be distinct.
 */
 
 
@@ -336,7 +352,7 @@ ANSWER: Why are unique indexes important for a marketplace database?
 // ------------------------------------------------------------
 
 // TODO: Create a text index on title and description, name it "idx_products_text"
-db.products.createIndex({}, {});
+db.products.createIndex({title: "text", description: "text"}, { name: "idx_products_text" });
 
 // Word search — any product whose title or description contains "textbook"
 // TODO: Run this search and record the results
@@ -352,11 +368,12 @@ db.products.find({ $text: { $search: "\"no dead pixels\"" } });
 
 /*
 RECORD RESULTS:
-  "textbook" search returned:          _______ documents
-  "keyboard headphones" search:        _______ documents
-  "\"no dead pixels\"" phrase search:   _______ documents
+  "textbook" search returned:          0 documents
+  "keyboard headphones" search:        0 documents
+  "\"no dead pixels\"" phrase search:   2 documents
 
 EXPLAIN: What is the difference between a word search and a phrase search?
+A word search matches documents containing ANY of the search terms (OR logic), returning documents that have at least one word. A phrase search matches documents containing the EXACT sequence of words in quotes (AND logic with exact order and proximity), making it more precise."
 */
 
 // ------------------------------------------------------------
@@ -364,16 +381,38 @@ EXPLAIN: What is the difference between a word search and a phrase search?
 // ------------------------------------------------------------
 
 // TODO: Run this query to see textScore relevance ranking
+
 db.products.find(
   { $text: { $search: "textbook" } },
+  { score: { $meta: "textScore" }, title: 1, _id: 0 }
+).sort({ score: { $meta: "textScore" } });
+
+
+// Modified query to get actual results
+db.products.find(
+  { $text: { $search: "monitor" } },
   { score: { $meta: "textScore" }, title: 1, _id: 0 }
 ).sort({ score: { $meta: "textScore" } });
 
 /*
 RECORD RESULTS (include each document's score):
 _______________________________________
+/*
+RECORD RESULTS (include each document's score):
+For search "monitor":
+  { title: "Dell 24-inch Monitor P2422H", score: 1.0 }
+
+For search "linear":
+  { title: "Linear Algebra Done Right 4th Ed", score: 0.75 }
+
+For search "ergonomic":
+  { title: "Ergonomic Office Chair", score: 1.0 }
+
 
 EXPLAIN: What does the textScore represent?
+
+The textScore represents the relevance ranking of a document for a text search query. Higher scores indicate better matches based on factors like term frequency (how many times search terms appear), term uniqueness (rarer terms get higher weight), and field weight (if specified).
+
 */
 
 
@@ -392,16 +431,28 @@ db.sellers.getIndexes();
 
 /*
 RECORD INDEX INVENTORY TABLE:
-Collection | Index Name             | Key Pattern        | Options
------------|------------------------|--------------------|--------
-products   | _id_                   | { _id: 1 }         |
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-products   | _______________________ | __________________ | _______
-orders     | _id_                   | { _id: 1 }         |
-orders     | _______________________ | __________________ | _______
+
+/*
+RECORD INDEX INVENTORY TABLE:
+Collection | Index Name                      | Key Pattern                          | Options
+-----------|--------------------------------|--------------------------------------|--------
+products   | _id_                            | { _id: 1 }                           | 
+products   | idx_products_category           | { category: 1 }                      | 
+products   | idx_products_status             | { status: 1 }                        | 
+products   | tags_1                          | { tags: 1 }                          | multikey
+products   | idx_products_text               | text on title & description          | weights: 1,1
+orders     | _id_                            | { _id: 1 }                           | 
+orders     | idx_order_total                 | { total: 1 }                         | 
+orders     | seller_id_1_status_1_order_date_-1 | { seller_id:1, status:1, order_date:-1 } | 
+sellers    | _id_                            | { _id: 1 }                           | 
+sellers    | idx_sellers_seller_id_unique    | { seller_id: 1 }                     | unique
+sellers    | idx_sellers_email_unique        | { email: 1 }                         | unique
+sellers    | idx_sellers_status              | { status: 1 }                        | 
+sellers    | idx_sellers_rating_desc         | { rating: -1 }                       | 
+sellers    | idx_sellers_join_date_status    | { join_date: -1, status: 1 }         | 
 */
+
+
 
 // ------------------------------------------------------------
 // Task 5.2 — Drop and Rebuild (5 points)
@@ -409,14 +460,15 @@ orders     | _______________________ | __________________ | _______
 
 // Drop the category index
 // TODO: Drop "idx_products_category"
-db.products.dropIndex("");
+db.products.dropIndex("idx_products_category");
 
 // Verify it's gone
 db.products.getIndexes();
 
 // Recreate it
 // TODO: Recreate the category index with the same name
-db.products.createIndex({}, {});
+db.products.createIndex({ category: 1 }, 
+  { name: "idx_products_category" });
 
 // Verify it's back
 db.products.getIndexes();
@@ -432,8 +484,11 @@ db.orders.aggregate([{ $indexStats: {} }]);
 /*
 RECORD STATS:
   Which indexes have accesses.ops > 0?
-  _______________________________________
+   products: idx_products_category, idx_products_status, tags_1
+  orders: idx_order_total, seller_id_1_status_1_order_date_-1
+
 
   What does accesses.ops represent?
-  _______________________________________
+    accesses.ops represents the number of times each index has been used to execute a query operation (find, update, delete, or aggregation) since the MongoDB instance started or the index was created. It helps identify which indexes are actively being used and which are unnecessary.
+
 */
