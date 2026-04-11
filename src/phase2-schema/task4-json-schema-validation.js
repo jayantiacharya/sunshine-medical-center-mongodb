@@ -46,7 +46,11 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -60,7 +64,41 @@ export async function close() {
 export async function task4_1_doctorSchema() {
     // TODO: Build a $jsonSchema validator and apply with collMod
     // Return the validator object
-    throw new Error('task4_1_doctorSchema() not implemented');
+     const validator = {
+        $jsonSchema: {
+            bsonType: 'object',
+            required: [
+                'doctor_id',
+                'first_name',
+                'last_name',
+                'specialty',
+                'email',
+                'hire_date',
+                'is_accepting_patients'
+            ],
+            properties: {
+                doctor_id: { bsonType: 'string' },
+                first_name: { bsonType: 'string' },
+                last_name: { bsonType: 'string' },
+                specialty: { bsonType: 'string' },
+                email: { bsonType: 'string' },
+                hire_date: { bsonType: 'date' },
+                is_accepting_patients: { bsonType: 'bool' }
+            }
+        }
+    };
+    
+    await db.command({
+        collMod: 'doctors',
+        validator: validator,
+        validationLevel: 'strict',
+        validationAction: 'error'
+    });
+    
+    console.log('\nApplied validator to doctors collection');
+    
+    return validator;
+
 }
 
 /**
@@ -70,7 +108,47 @@ export async function task4_1_doctorSchema() {
 export async function task4_2_patientSchema() {
     // TODO: Build a $jsonSchema validator and apply with collMod
     // Return the validator object
-    throw new Error('task4_2_patientSchema() not implemented');
+    
+    const validator = {
+        $jsonSchema: {
+            bsonType: 'object',
+            required: [
+                'patient_id',
+                'first_name',
+                'last_name',
+                'date_of_birth',
+                'gender',
+                'status',
+                'registration_date'
+            ],
+            properties: {
+                patient_id: { bsonType: 'string' },
+                first_name: { bsonType: 'string' },
+                last_name: { bsonType: 'string' },
+                date_of_birth: { bsonType: 'date' },
+                gender: { 
+                    bsonType: 'string',
+                    enum: ['M', 'F', 'Other']
+                },
+                status: { 
+                    bsonType: 'string',
+                    enum: ['Active', 'Inactive', 'Pending']
+                },
+                registration_date: { bsonType: 'date' }
+            }
+        }
+    };
+    
+    await db.command({
+        collMod: 'patients',
+        validator: validator,
+        validationLevel: 'strict',
+        validationAction: 'error'
+    });
+    
+    console.log('\nApplied validator to patients collection');
+    
+    return validator;
 }
 
 /**
@@ -80,7 +158,45 @@ export async function task4_2_patientSchema() {
 export async function task4_3_verifyRejection() {
     // TODO: Try to insert invalid docs and catch the errors
     // Return { doctorRejected, patientRejected }
-    throw new Error('task4_3_verifyRejection() not implemented');
+    
+    let doctorRejected = false;
+    let patientRejected = false;
+    
+    // Try to insert invalid doctor (missing specialty)
+    try {
+        await db.collection('doctors').insertOne({
+            doctor_id: 'D999',
+            first_name: 'Test',
+            last_name: 'Doctor',
+            email: 'test@test.com',
+            hire_date: new Date(),
+            is_accepting_patients: true
+            // specialty missing intentionally
+        });
+        console.log('Doctor insert succeeded (should have failed)');
+    } catch (e) {
+        doctorRejected = true;
+        console.log('Doctor insert rejected (missing specialty)');
+    }
+    
+    // Try to insert invalid patient (date_of_birth as string)
+    try {
+        await db.collection('patients').insertOne({
+            patient_id: 'P999',
+            first_name: 'Test',
+            last_name: 'Patient',
+            date_of_birth: '1990-01-01', // string instead of Date
+            gender: 'M',
+            status: 'Active',
+            registration_date: new Date()
+        });
+        console.log('Patient insert succeeded (should have failed)');
+    } catch (e) {
+        patientRejected = true;
+        console.log('Patient insert rejected (date_of_birth as string)');
+    }
+    
+    return { doctorRejected, patientRejected };
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
