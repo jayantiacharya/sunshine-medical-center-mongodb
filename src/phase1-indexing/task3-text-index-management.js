@@ -40,8 +40,13 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
+
 
 export async function close() {
     if (client) await client.close();
@@ -49,13 +54,53 @@ export async function close() {
 
 /**
  * Task 3.1 — Text index + $text queries — 8 points
- * @returns {{ indexName: string, diabetesResults: object[], medicationResults: object[] }}
- */
+*/
+
 export async function task3_1_textIndex() {
     // TODO: Create text index { notes: 'text', diagnosis: 'text' }
     //       Query with $text / $search and sort by textScore
     // Return { indexName, diabetesResults, medicationResults }
-    throw new Error('task3_1_textIndex() not implemented');
+    
+    const indexName = 'notes_diagnosis_text';
+    
+    // Drop index if it exists
+    try {
+        await db.collection('treatments').dropIndex(indexName);
+    } catch (e) {
+        // Index doesn't exist yet
+    }
+    
+    // Create text index on notes and diagnosis fields
+    await db.collection('treatments').createIndex(
+        { notes: 'text', diagnosis: 'text' },
+        { name: indexName }
+    );
+    
+    console.log('\nCreated text index:', indexName);
+    
+    // Query for 'diabetes' with text score sorting
+    const diabetesResults = await db.collection('treatments')
+        .find(
+            { $text: { $search: 'diabetes' } },
+            { score: { $meta: 'textScore' } }
+        )
+        .sort({ score: { $meta: 'textScore' } })
+        .toArray();
+    
+    console.log('Diabetes search results:', diabetesResults.length);
+    
+    // Query for 'medication' with text score sorting
+    const medicationResults = await db.collection('treatments')
+        .find(
+            { $text: { $search: 'medication' } },
+            { score: { $meta: 'textScore' } }
+        )
+        .sort({ score: { $meta: 'textScore' } })
+        .toArray();
+    
+    console.log('Medication search results:', medicationResults.length);
+    
+    return { indexName, diabetesResults, medicationResults };
 }
 
 /**
@@ -65,7 +110,38 @@ export async function task3_1_textIndex() {
 export async function task3_2_dropIndex() {
     // TODO: createIndex then dropIndex
     // Return the dropped index name
-    throw new Error('task3_2_dropIndex() not implemented');
+    
+    const indexName = 'registration_date_temp';
+    
+    // Drop if exists from previous run
+    try {
+        await db.collection('patients').dropIndex(indexName);
+    } catch (e) {
+        // Index doesn't exist yet
+    }
+    
+    // Create temporary index
+    await db.collection('patients').createIndex(
+        { registration_date: 1 },
+        { name: indexName }
+    );
+    
+    console.log('\nCreated temporary index:', indexName);
+    
+    // Verify index exists
+    const beforeIndexes = await db.collection('patients').indexes();
+    console.log('Indexes before drop:', beforeIndexes.length);
+    
+    // Drop the index
+    await db.collection('patients').dropIndex(indexName);
+    
+    console.log('Dropped index:', indexName);
+    
+    // Verify index is gone
+    const afterIndexes = await db.collection('patients').indexes();
+    console.log('Indexes after drop:', afterIndexes.length);
+    
+    return indexName;
 }
 
 /**
@@ -75,9 +151,25 @@ export async function task3_2_dropIndex() {
 export async function task3_3_indexReport() {
     // TODO: Call col.indexes() on each collection
     // Return { doctors, patients, appointments, treatments }
-    throw new Error('task3_3_indexReport() not implemented');
+    
+    const doctorsIndexes = await db.collection('doctors').indexes();
+    const patientsIndexes = await db.collection('patients').indexes();
+    const appointmentsIndexes = await db.collection('appointments').indexes();
+    const treatmentsIndexes = await db.collection('treatments').indexes();
+    
+    console.log('\nIndex Report:');
+    console.log('Doctors:', doctorsIndexes.length);
+    console.log('Patients:', patientsIndexes.length);
+    console.log('Appointments:', appointmentsIndexes.length);
+    console.log('Treatments:', treatmentsIndexes.length);
+    
+    return {
+        doctors: doctorsIndexes,
+        patients: patientsIndexes,
+        appointments: appointmentsIndexes,
+        treatments: treatmentsIndexes
+    };
 }
-
 // ── main ───────────────────────────────────────────────────────────────────
 
 async function main() {

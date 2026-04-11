@@ -40,8 +40,11 @@ let client;
 let db;
 
 export async function connect() {
-    // TODO: connect to MongoDB, set `client` and `db`
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -56,19 +59,62 @@ export async function task1_1_baselineExplain() {
     // TODO: Drop any existing custom indexes, then run explain() on both queries
     // Hint: collection.find({ ... }).explain("executionStats")
     // Return { doctorsPlan, patientsPlan }
-    throw new Error('task1_1_baselineExplain() not implemented');
+    
+    // Drop any existing custom indexes to ensure COLLSCAN
+    try {
+        await db.collection('doctors').dropIndex('specialty_1');
+        await db.collection('patients').dropIndex('status_1');
+    } catch (e) {
+        // Indexes might not exist yet, that's fine
+        console.log('No existing indexes to drop');
+    }
+    
+    // Run explain() on doctors query
+    const doctorsExplain = await db.collection('doctors')
+        .find({ specialty: 'Cardiology' })
+        .explain('executionStats');
+    
+    // Run explain() on patients query
+    const patientsExplain = await db.collection('patients')
+        .find({ status: 'Active' })
+        .explain('executionStats');
+    
+    console.log('\nDoctors Query Winning Plan:');
+    console.log('Stage:', doctorsExplain.queryPlanner.winningPlan.stage);
+    
+    console.log('\nPatients Query Winning Plan:');
+    console.log('Stage:', patientsExplain.queryPlanner.winningPlan.stage);
+    
+    return {
+        doctorsPlan: doctorsExplain.queryPlanner.winningPlan,
+        patientsPlan: patientsExplain.queryPlanner.winningPlan
+    };
 }
 
 /**
  * Task 1.2 — Create single-field indexes — 5 points
- * @returns {string[]} names of created indexes
+ * @returns {string[]} Array of index names created
  */
 export async function task1_2_createSingleFieldIndexes() {
-    // TODO: db.collection('doctors').createIndex({ specialty: 1 }, { name: 'specialty_1' })
-    //       db.collection('patients').createIndex({ status: 1 }, { name: 'status_1' })
-    //       db.collection('appointments').createIndex({ appointment_date: 1 }, { name: 'appointment_date_1' })
-    // Return [idx1, idx2, idx3]
-    throw new Error('task1_2_createSingleFieldIndexes() not implemented');
+    // TODO: Create three single-field indexes
+    // Hint: db.collection('doctors').createIndex({ field: 1 })
+    // Return array of index names
+    
+    // Create index on doctors.specialty
+    const doctorsIndex = await db.collection('doctors')
+        .createIndex({ specialty: 1 }, { name: 'specialty_1' });
+    
+    // Create index on patients.status
+    const patientsIndex = await db.collection('patients')
+        .createIndex({ status: 1 }, { name: 'status_1' });
+    
+    // Create index on appointments.appointment_date
+    const appointmentsIndex = await db.collection('appointments')
+        .createIndex({ appointment_date: 1 }, { name: 'appointment_date_1' });
+    
+    console.log('Created indexes:', doctorsIndex, patientsIndex, appointmentsIndex);
+    
+    return ['specialty_1', 'status_1', 'appointment_date_1'];
 }
 
 /**
@@ -78,10 +124,28 @@ export async function task1_2_createSingleFieldIndexes() {
 export async function task1_3_verifyIxscan() {
     // TODO: Re-run the same explain() queries. Extract the winning plan stage.
     // Return { doctorsStage, patientsStage }
-    throw new Error('task1_3_verifyIxscan() not implemented');
+    
+    // Run explain() on doctors query with index
+    const doctorsExplain = await db.collection('doctors')
+        .find({ specialty: 'Cardiology' })
+        .explain('executionStats');
+    
+    // Run explain() on patients query with index
+    const patientsExplain = await db.collection('patients')
+        .find({ status: 'Active' })
+        .explain('executionStats');
+    
+    const doctorsStage = doctorsExplain.queryPlanner.winningPlan.stage;
+    const patientsStage = patientsExplain.queryPlanner.winningPlan.stage;
+    
+    console.log('\nDoctors Query Stage (after index):', doctorsStage);
+    console.log('Patients Query Stage (after index):', patientsStage);
+    
+    return { doctorsStage, patientsStage };
 }
+// ─── main ───────────────────────────────────────────────────────────────────
 
-// ── main ───────────────────────────────────────────────────────────────────
+// ─── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
     try {
@@ -95,4 +159,6 @@ async function main() {
     }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) { main(); }
+if (import.meta.url === `file://${process.argv[1]}`) { 
+    main(); 
+}
