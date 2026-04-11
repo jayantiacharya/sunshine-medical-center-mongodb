@@ -52,7 +52,11 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -66,7 +70,111 @@ export async function close() {
 export async function task5_1_createMedicalEvents() {
     // TODO: deleteMany then insertMany with all 4 types, at least 2 each
     // Return result.insertedCount
-    throw new Error('task5_1_createMedicalEvents() not implemented');
+    
+    // Clear existing medical_events
+    await db.collection('medical_events').deleteMany({});
+    
+    const events = [
+        // Appointment type (2)
+        {
+            event_id: 'EVT001',
+            type: 'appointment',
+            patient_ref: 'P10001',
+            event_date: new Date('2024-01-15T09:00:00Z'),
+            created_by: 'D001',
+            appointment_ref: 'APT001',
+            status: 'Scheduled',
+            duration_minutes: 30
+        },
+        {
+            event_id: 'EVT002',
+            type: 'appointment',
+            patient_ref: 'P10002',
+            event_date: new Date('2024-01-16T14:00:00Z'),
+            created_by: 'D002',
+            appointment_ref: 'APT002',
+            status: 'Completed',
+            duration_minutes: 45
+        },
+        
+        // Lab Result type (2)
+        {
+            event_id: 'EVT003',
+            type: 'lab_result',
+            patient_ref: 'P10001',
+            event_date: new Date('2024-01-10T08:00:00Z'),
+            created_by: 'D001',
+            test_name: 'Blood Glucose',
+            result_value: 145,
+            unit: 'mg/dL',
+            reference_range: '70-100',
+            flagged: true
+        },
+        {
+            event_id: 'EVT004',
+            type: 'lab_result',
+            patient_ref: 'P10003',
+            event_date: new Date('2024-01-12T08:00:00Z'),
+            created_by: 'D001',
+            test_name: 'Cholesterol',
+            result_value: 180,
+            unit: 'mg/dL',
+            reference_range: '<200',
+            flagged: false
+        },
+        
+        // Note type (2)
+        {
+            event_id: 'EVT005',
+            type: 'note',
+            patient_ref: 'P10002',
+            event_date: new Date('2024-01-15T10:00:00Z'),
+            created_by: 'D002',
+            note_text: 'Patient reports mild headache',
+            note_category: 'Symptom'
+        },
+        {
+            event_id: 'EVT006',
+            type: 'note',
+            patient_ref: 'P10004',
+            event_date: new Date('2024-01-17T11:00:00Z'),
+            created_by: 'D003',
+            note_text: 'Follow-up scheduled in 2 weeks',
+            note_category: 'Plan'
+        },
+        
+        // Referral type (2)
+        {
+            event_id: 'EVT007',
+            type: 'referral',
+            patient_ref: 'P10001',
+            event_date: new Date('2024-01-18T13:00:00Z'),
+            created_by: 'D001',
+            referred_to_specialty: 'Cardiology',
+            referred_to_doctor: 'Dr. Heart',
+            urgency: 'Routine'
+        },
+        {
+            event_id: 'EVT008',
+            type: 'referral',
+            patient_ref: 'P10005',
+            event_date: new Date('2024-01-19T15:00:00Z'),
+            created_by: 'D002',
+            referred_to_specialty: 'Neurology',
+            referred_to_doctor: 'Dr. Brain',
+            urgency: 'Urgent'
+        }
+    ];
+    
+    const result = await db.collection('medical_events').insertMany(events);
+    
+    console.log('\nInserted', result.insertedCount, 'medical events');
+    console.log('- Appointments: 2');
+    console.log('- Lab Results: 2');
+    console.log('- Notes: 2');
+    console.log('- Referrals: 2');
+    
+    return result.insertedCount;
 }
 
 /**
@@ -76,7 +184,29 @@ export async function task5_1_createMedicalEvents() {
 export async function task5_2_queryByType() {
     // TODO: Three separate find() queries on medical_events
     // Return { labResults, flaggedLabs, referrals }
-    throw new Error('task5_2_queryByType() not implemented');
+    
+    // Query 1: All lab_result events
+    const labResults = await db.collection('medical_events')
+        .find({ type: 'lab_result' })
+        .toArray();
+    
+    console.log('\nLab results found:', labResults.length);
+    
+    // Query 2: Lab results that are flagged
+    const flaggedLabs = await db.collection('medical_events')
+        .find({ type: 'lab_result', flagged: true })
+        .toArray();
+    
+    console.log('Flagged lab results:', flaggedLabs.length);
+    
+    // Query 3: Referrals for patient P10001
+    const referrals = await db.collection('medical_events')
+        .find({ type: 'referral', patient_ref: 'P10001' })
+        .toArray();
+    
+    console.log('Referrals for P10001:', referrals.length);
+    
+    return { labResults, flaggedLabs, referrals };
 }
 
 /**
@@ -86,7 +216,25 @@ export async function task5_2_queryByType() {
 export async function task5_3_addTypeIndex() {
     // TODO: createIndex({ type: 1, patient_ref: 1 }, { name: 'type_patient_ref_1' })
     // Return the index name
-    throw new Error('task5_3_addTypeIndex() not implemented');
+    
+    const indexName = 'type_patient_ref_1';
+    
+    // Drop index if it exists
+    try {
+        await db.collection('medical_events').dropIndex(indexName);
+    } catch (e) {
+        // Index doesn't exist yet
+    }
+    
+    // Create compound index
+    await db.collection('medical_events').createIndex(
+        { type: 1, patient_ref: 1 },
+        { name: indexName }
+    );
+    
+    console.log('\nCreated compound index:', indexName);
+    
+    return indexName;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
