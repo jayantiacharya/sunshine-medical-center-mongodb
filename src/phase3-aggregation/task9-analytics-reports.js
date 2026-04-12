@@ -50,7 +50,11 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -62,7 +66,68 @@ export async function close() {
  * @returns {object[]}
  */
 export async function task9_1_doctorWorkload() {
-    throw new Error('task9_1_doctorWorkload() not implemented');
+    // TODO: $group by doctor_ref with status counts, $lookup doctors, $project, $sort
+    
+    const pipeline = [
+        {
+            $group: {
+                _id: '$doctor_ref',
+                totalAppointments: { $sum: 1 },
+                completed: {
+                    $sum: {
+                        $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0]
+                    }
+                },
+                scheduled: {
+                    $sum: {
+                        $cond: [{ $eq: ['$status', 'Scheduled'] }, 1, 0]
+                    }
+                },
+                cancelled: {
+                    $sum: {
+                        $cond: [{ $eq: ['$status', 'Cancelled'] }, 1, 0]
+                    }
+                }
+            }
+        },
+        {
+            $lookup: {
+                from: 'doctors',
+                localField: '_id',
+                foreignField: 'doctor_id',
+                as: 'doctor'
+            }
+        },
+        {
+            $unwind: '$doctor'
+        },
+        {
+            $project: {
+                doctor_id: '$_id',
+                doctor_name: {
+                    $concat: ['Dr. ', '$doctor.first_name', ' ', '$doctor.last_name']
+                },
+                specialty: '$doctor.specialty',
+                totalAppointments: 1,
+                completed: 1,
+                scheduled: 1,
+                cancelled: 1,
+                _id: 0
+            }
+        },
+        {
+            $sort: { totalAppointments: -1 }
+        }
+    ];
+    
+    const results = await db.collection('appointments').aggregate(pipeline).toArray();
+    
+    console.log('\nDoctor workload report:', results.length, 'doctors');
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -70,7 +135,59 @@ export async function task9_1_doctorWorkload() {
  * @returns {object[]}
  */
 export async function task9_2_patientCareSummary() {
-    throw new Error('task9_2_patientCareSummary() not implemented');
+    // TODO: $group by patient_ref, $lookup patients, $project, $sort
+    
+    const pipeline = [
+        {
+            $group: {
+                _id: '$patient_ref',
+                totalTreatments: { $sum: 1 },
+                totalCost: { $sum: '$cost' },
+                followUpCount: {
+                    $sum: {
+                        $cond: ['$follow_up_required', 1, 0]
+                    }
+                },
+                lastTreatment: { $max: '$treatment_date' }
+            }
+        },
+        {
+            $lookup: {
+                from: 'patients',
+                localField: '_id',
+                foreignField: 'patient_id',
+                as: 'patient'
+            }
+        },
+        {
+            $unwind: '$patient'
+        },
+        {
+            $project: {
+                patient_id: '$_id',
+                patient_name: {
+                    $concat: ['$patient.first_name', ' ', '$patient.last_name']
+                },
+                totalTreatments: 1,
+                totalCost: { $round: ['$totalCost', 2] },
+                followUpCount: 1,
+                lastTreatment: 1,
+                _id: 0
+            }
+        },
+        {
+            $sort: { totalCost: -1 }
+        }
+    ];
+    
+    const results = await db.collection('treatments').aggregate(pipeline).toArray();
+    
+    console.log('\nPatient care summary:', results.length, 'patients');
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -78,7 +195,54 @@ export async function task9_2_patientCareSummary() {
  * @returns {object[]}
  */
 export async function task9_3_monthlyTrends() {
-    throw new Error('task9_3_monthlyTrends() not implemented');
+    // TODO: $group by year, month, status, $project period, $sort
+    
+    const pipeline = [
+        {
+            $group: {
+                _id: {
+                    year: { $year: '$appointment_date' },
+                    month: { $month: '$appointment_date' },
+                    status: '$status'
+                },
+                count: { $sum: 1 }
+            }
+        },
+        {
+            $project: {
+                year: '$_id.year',
+                month: '$_id.month',
+                status: '$_id.status',
+                count: 1,
+                period: {
+                    $concat: [
+                        { $toString: '$_id.year' },
+                        '-',
+                        {
+                            $cond: {
+                                if: { $lt: ['$_id.month', 10] },
+                                then: { $concat: ['0', { $toString: '$_id.month' }] },
+                                else: { $toString: '$_id.month' }
+                            }
+                        }
+                    ]
+                },
+                _id: 0
+            }
+        },
+        {
+            $sort: { year: 1, month: 1, status: 1 }
+        }
+    ];
+    
+    const results = await db.collection('appointments').aggregate(pipeline).toArray();
+    
+    console.log('\nMonthly appointment trends:', results.length, 'groups');
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results.slice(0, 3), null, 2));
+    }
+    
+    return results;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

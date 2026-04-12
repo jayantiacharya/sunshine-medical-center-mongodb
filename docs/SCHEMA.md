@@ -63,6 +63,7 @@ Brief description of your overall schema design approach and philosophy.
 
 **Design Decisions:**
 - **Why this structure:** [Explain your reasoning]
+
 - **What NOT to embed:** [Explain what you chose to reference instead]
 - **Access patterns supported:** [List the queries this design optimizes]
 
@@ -166,17 +167,39 @@ Brief description of your overall schema design approach and philosophy.
 - Patients typically have 2-3 appointments per year
 - Common queries need to find appointments for specific patients or doctors
 - What are the implications of each approach?]
+Appointments should be stored as a separate collection rather than embedded in patients or doctors.
+
+Doctors can have 20-30 appointments per day, which would quickly create unbounded arrays if embedded. Over a year, a single doctor would have thousands of appointments—embedding would hit MongoDB's 16MB document limit. Patients only have 2-3 appointments per year, but appointments need to be queried from both sides: "show me Dr. Chen's schedule today" and "show me John Doe's upcoming appointments." A separate collection with references allows efficient queries from either direction using indexes.
+
 
 **Question 2: Should patient and doctor information be embedded in appointments or referenced by ID?**
+
 
 [YOUR ANSWER HERE: Explain your reasoning - consider:
 - Data duplication vs consistency
 - What happens when doctor information changes?
 - Query performance for appointment lookups]
 
+Patient and doctor information should be referenced by ID, not embedded.
+
+If we embedded patient names and doctor details in every appointment, updating a doctor's phone number or a patient's address would require updating hundreds or thousands of appointment documents. This creates data inconsistency risks. Referencing keeps data in one place—one update fixes it everywhere. The trade-off is needing $lookup joins for some queries, but indexes make this fast enough for typical appointment lookups.
+
 **Question 3: What fields would you include in each appointment document?**
 
 [YOUR ANSWER HERE: List all fields with their data types and justify any additional fields beyond the basic structure shown above]
+
+{
+  appointment_id: String,      // Unique identifier (e.g., "APT001")
+  patient_ref: String,         // Reference to patients.patient_id
+  doctor_ref: String,          // Reference to doctors.doctor_id
+  appointment_date: Date,      // Date of appointment
+  appointment_time: String,    // Time (e.g., "09:30")
+  duration_minutes: Number,    // Length of appointment
+  reason: String,              // Reason for visit
+  status: String,              // "Scheduled", "Completed", "Cancelled"
+  notes: String,               // Additional notes
+  created_at: Date             // When the appointment was booked
+}
 
 ---
 

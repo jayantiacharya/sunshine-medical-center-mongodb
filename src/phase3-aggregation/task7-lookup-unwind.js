@@ -49,7 +49,11 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -62,7 +66,44 @@ export async function close() {
  */
 export async function task7_1_lookupDoctors() {
     // TODO: aggregate with $lookup, $unwind, $project, $sort
-    throw new Error('task7_1_lookupDoctors() not implemented');
+    
+    const pipeline = [
+        {
+            $lookup: {
+                from: 'doctors',
+                localField: 'doctor_ref',
+                foreignField: 'doctor_id',
+                as: 'doctor'
+            }
+        },
+        {
+            $unwind: '$doctor'
+        },
+        {
+            $project: {
+                appointment_id: 1,
+                appointment_date: 1,
+                status: 1,
+                patient_ref: 1,
+                doctor_name: {
+                    $concat: ['Dr. ', '$doctor.first_name', ' ', '$doctor.last_name']
+                },
+                specialty: '$doctor.specialty'
+            }
+        },
+        {
+            $sort: { appointment_date: 1 }
+        }
+    ];
+    
+    const results = await db.collection('appointments').aggregate(pipeline).toArray();
+    
+    console.log('\nAppointments with doctor info:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -71,7 +112,44 @@ export async function task7_1_lookupDoctors() {
  */
 export async function task7_2_lookupPatients() {
     // TODO: aggregate with $lookup, $unwind, $project, $sort
-    throw new Error('task7_2_lookupPatients() not implemented');
+    
+    const pipeline = [
+        {
+            $lookup: {
+                from: 'patients',
+                localField: 'patient_ref',
+                foreignField: 'patient_id',
+                as: 'patient'
+            }
+        },
+        {
+            $unwind: '$patient'
+        },
+        {
+            $project: {
+                appointment_id: 1,
+                appointment_date: 1,
+                status: 1,
+                doctor_ref: 1,
+                patient_name: {
+                    $concat: ['$patient.first_name', ' ', '$patient.last_name']
+                },
+                reason: 1
+            }
+        },
+        {
+            $sort: { appointment_date: 1 }
+        }
+    ];
+    
+    const results = await db.collection('appointments').aggregate(pipeline).toArray();
+    
+    console.log('\nAppointments with patient info:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -80,7 +158,39 @@ export async function task7_2_lookupPatients() {
  */
 export async function task7_3_unwindMedications() {
     // TODO: $match → $unwind → $project → $sort
-    throw new Error('task7_3_unwindMedications() not implemented');
+    
+    const pipeline = [
+        {
+            $match: {
+                medications: { $ne: [], $exists: true }
+            }
+        },
+        {
+            $unwind: '$medications'
+        },
+        {
+            $project: {
+                treatment_id: 1,
+                patient_ref: 1,
+                diagnosis: 1,
+                medication_name: '$medications.name',
+                dosage: '$medications.dosage',
+                frequency: '$medications.frequency'
+            }
+        },
+        {
+            $sort: { treatment_id: 1 }
+        }
+    ];
+    
+    const results = await db.collection('treatments').aggregate(pipeline).toArray();
+    
+    console.log('\nFlattened medications:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────

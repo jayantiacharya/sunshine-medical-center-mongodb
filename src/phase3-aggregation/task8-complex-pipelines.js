@@ -52,7 +52,11 @@ let client;
 let db;
 
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -64,7 +68,49 @@ export async function close() {
  * @returns {object[]}
  */
 export async function task8_1_groupAccumulators() {
-    throw new Error('task8_1_groupAccumulators() not implemented');
+    // TODO: $group by patient_ref with multiple accumulators, $sort
+    
+    const pipeline = [
+        {
+            $group: {
+                _id: '$patient_ref',
+                treatmentCount: { $sum: 1 },
+                totalCost: { $sum: '$cost' },
+                avgCost: { $avg: '$cost' },
+                minCost: { $min: '$cost' },
+                maxCost: { $max: '$cost' },
+                followUpCount: {
+                    $sum: {
+                        $cond: ['$follow_up_required', 1, 0]
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                patient_ref: '$_id',
+                treatmentCount: 1,
+                totalCost: { $round: ['$totalCost', 2] },
+                avgCost: { $round: ['$avgCost', 2] },
+                minCost: 1,
+                maxCost: 1,
+                followUpCount: 1,
+                _id: 0
+            }
+        },
+        {
+            $sort: { totalCost: -1 }
+        }
+    ];
+    
+    const results = await db.collection('treatments').aggregate(pipeline).toArray();
+    
+    console.log('\nTreatment summary by patient:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -72,7 +118,57 @@ export async function task8_1_groupAccumulators() {
  * @returns {object[]}
  */
 export async function task8_2_addFields() {
-    throw new Error('task8_2_addFields() not implemented');
+    // TODO: $addFields age, hasAllergies, fullName, then $project, $sort
+    
+    const pipeline = [
+        {
+            $addFields: {
+                age: {
+                    $floor: {
+                        $divide: [
+                            { $subtract: [new Date(), '$date_of_birth'] },
+                            1000 * 60 * 60 * 24 * 365
+                        ]
+                    }
+                },
+                hasAllergies: {
+                    $cond: {
+                        if: { $and: [
+                            { $isArray: '$allergies' },
+                            { $gt: [{ $size: '$allergies' }, 0] }
+                        ]},
+                        then: true,
+                        else: false
+                    }
+                },
+                fullName: {
+                    $concat: ['$first_name', ' ', '$last_name']
+                }
+            }
+        },
+        {
+            $project: {
+                patient_id: 1,
+                fullName: 1,
+                age: 1,
+                hasAllergies: 1,
+                status: 1,
+                _id: 0
+            }
+        },
+        {
+            $sort: { age: 1 }
+        }
+    ];
+    
+    const results = await db.collection('patients').aggregate(pipeline).toArray();
+    
+    console.log('\nPatients with computed fields:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 /**
@@ -80,7 +176,64 @@ export async function task8_2_addFields() {
  * @returns {object[]}
  */
 export async function task8_3_replaceRoot() {
-    throw new Error('task8_3_replaceRoot() not implemented');
+    // TODO: $lookup, $match, $unwind, $replaceRoot, $project, $sort
+    
+    const pipeline = [
+        {
+            $lookup: {
+                from: 'treatments',
+                localField: 'patient_id',
+                foreignField: 'patient_ref',
+                as: 'treatments'
+            }
+        },
+        {
+            $match: {
+                treatments: { $ne: [] }
+            }
+        },
+        {
+            $unwind: '$treatments'
+        },
+        {
+            $replaceRoot: {
+                newRoot: {
+                    $mergeObjects: [
+                        '$treatments',
+                        {
+                            patient_name: {
+                                $concat: ['$first_name', ' ', '$last_name']
+                            },
+                            patient_status: '$status'
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            $project: {
+                treatment_id: 1,
+                patient_name: 1,
+                patient_status: 1,
+                diagnosis: 1,
+                treatment_type: 1,
+                cost: 1,
+                _id: 0
+            }
+        },
+        {
+            $sort: { treatment_id: 1 }
+        }
+    ];
+    
+    const results = await db.collection('patients').aggregate(pipeline).toArray();
+    
+    console.log('\nReshaped treatment documents:', results.length);
+    if (results.length > 0) {
+        console.log('Sample:', JSON.stringify(results[0], null, 2));
+    }
+    
+    return results;
 }
 
 // ── main ───────────────────────────────────────────────────────────────────
