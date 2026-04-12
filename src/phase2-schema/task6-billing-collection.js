@@ -49,8 +49,13 @@ const DB_NAME = 'sunshine_medical_center';
 let client;
 let db;
 
+
 export async function connect() {
-    throw new Error('connect() not implemented');
+    client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    db = client.db(DB_NAME);
+    console.log('Connected to MongoDB');
+    return db;
 }
 
 export async function close() {
@@ -64,7 +69,84 @@ export async function close() {
 export async function task6_2_createBilling() {
     // TODO: deleteMany then insertMany with at least 6 billing documents
     // Return result.insertedCount
-    throw new Error('task6_2_createBilling() not implemented');
+    
+    // Clear existing billing documents
+    await db.collection('billing').deleteMany({});
+    
+    const bills = [
+        {
+            bill_id: 'BILL001',
+            patient_ref: 'P10001',
+            appointment_ref: 'APT001',
+            billed_date: new Date('2024-01-15'),
+            billed_amount: 250.00,
+            insurance_paid: 200.00,
+            patient_owed: 50.00,
+            payment_status: 'Paid',
+            insurance_provider: 'Blue Cross'
+        },
+        {
+            bill_id: 'BILL002',
+            patient_ref: 'P10002',
+            appointment_ref: 'APT002',
+            billed_date: new Date('2024-01-16'),
+            billed_amount: 175.00,
+            insurance_paid: 150.00,
+            patient_owed: 25.00,
+            payment_status: 'Outstanding',
+            insurance_provider: 'Aetna'
+        },
+        {
+            bill_id: 'BILL003',
+            patient_ref: 'P10003',
+            appointment_ref: 'APT003',
+            billed_date: new Date('2024-01-17'),
+            billed_amount: 450.00,
+            insurance_paid: 400.00,
+            patient_owed: 50.00,
+            payment_status: 'Paid',
+            insurance_provider: 'Cigna'
+        },
+        {
+            bill_id: 'BILL004',
+            patient_ref: 'P10001',
+            appointment_ref: 'APT004',
+            billed_date: new Date('2024-01-20'),
+            billed_amount: 320.00,
+            insurance_paid: 250.00,
+            patient_owed: 70.00,
+            payment_status: 'Outstanding',
+            insurance_provider: 'Blue Cross'
+        },
+        {
+            bill_id: 'BILL005',
+            patient_ref: 'P10004',
+            appointment_ref: 'APT005',
+            billed_date: new Date('2024-01-22'),
+            billed_amount: 125.00,
+            insurance_paid: 100.00,
+            patient_owed: 25.00,
+            payment_status: 'Paid',
+            insurance_provider: 'UnitedHealthcare'
+        },
+        {
+            bill_id: 'BILL006',
+            patient_ref: 'P10005',
+            appointment_ref: 'APT006',
+            billed_date: new Date('2024-01-25'),
+            billed_amount: 600.00,
+            insurance_paid: 300.00,
+            patient_owed: 300.00,
+            payment_status: 'Outstanding',
+            insurance_provider: 'Medicare'
+        }
+    ];
+    
+    const result = await db.collection('billing').insertMany(bills);
+    
+    console.log('\nInserted', result.insertedCount, 'billing documents');
+    
+    return result.insertedCount;
 }
 
 /**
@@ -74,9 +156,23 @@ export async function task6_2_createBilling() {
 export async function task6_3_billingQueries() {
     // TODO: Find outstanding bills and bills for P10001
     // Return { outstanding, patient }
-    throw new Error('task6_3_billingQueries() not implemented');
+    
+    // Find all outstanding bills
+    const outstanding = await db.collection('billing')
+        .find({ payment_status: 'Outstanding' })
+        .toArray();
+    
+    console.log('\nOutstanding bills found:', outstanding.length);
+    
+    // Find all bills for patient P10001
+    const patient = await db.collection('billing')
+        .find({ patient_ref: 'P10001' })
+        .toArray();
+    
+    console.log('Bills for patient P10001:', patient.length);
+    
+    return { outstanding, patient };
 }
-
 // ── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
