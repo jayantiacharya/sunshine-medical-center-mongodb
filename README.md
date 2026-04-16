@@ -5,6 +5,7 @@
 **Project Type:** Individual Project  
 **Duration:** 2 weeks  
 **Points:** 185 points
+**Demo video link** https://youtu.be/R_r8iQgz0RM
 
 > **Prerequisite:** This project continues directly from Module 5 (Project 5). The seed script provided in `src/seed/` will bootstrap the SunshineMedicalCenter database so you can start without completing Project 5 first.
 
